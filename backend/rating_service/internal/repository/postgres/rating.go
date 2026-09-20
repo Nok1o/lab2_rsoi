@@ -55,8 +55,7 @@ func (repository *RatingPGRepo) Create(
 		return nil
 	}
 
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23505" {
 		return domain.ErrRatingAlreadyExists
 	}
 	return fmt.Errorf("create rating: %w", err)

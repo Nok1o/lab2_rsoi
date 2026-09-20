@@ -11,10 +11,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"libriary_system/library_service/internal/config"
-	libraryhttp "libriary_system/library_service/internal/delivery/http"
-	"libriary_system/library_service/internal/repository/postgres"
-	"libriary_system/library_service/internal/usecase"
+	"libriary_system/reservation_service/internal/config"
+	reservationhttp "libriary_system/reservation_service/internal/delivery/http"
+	"libriary_system/reservation_service/internal/repository/postgres"
+	"libriary_system/reservation_service/internal/usecase"
 	"libriary_system/shared/log"
 )
 
@@ -27,25 +27,23 @@ func main() {
 
 	startupCtx, cancelStartup := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancelStartup()
-
 	pool, err := pgxpool.New(startupCtx, cfg.DatabaseURL)
 	if err != nil {
 		log.Error("create database pool", "error", err)
 		os.Exit(1)
 	}
 	defer pool.Close()
-
 	if err := pool.Ping(startupCtx); err != nil {
 		log.Error("connect to database", "error", err)
 		os.Exit(1)
 	}
 
-	repository := postgres.NewLibraryPGRepo(pool)
-	libraryUseCase := usecase.NewLibraryUseCase(repository)
-	handler := libraryhttp.NewHandler(libraryUseCase)
+	repository := postgres.NewReservationPGRepo(pool)
+	reservationUseCase := usecase.NewReservationUseCase(repository)
+	handler := reservationhttp.NewHandler(reservationUseCase)
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress,
-		Handler:           libraryhttp.NewRouter(handler),
+		Handler:           reservationhttp.NewRouter(handler),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
@@ -54,14 +52,12 @@ func main() {
 
 	serverErrors := make(chan error, 1)
 	go func() {
-		log.Info("library service started", "address", cfg.HTTPAddress)
+		log.Info("reservation service started", "address", cfg.HTTPAddress)
 		serverErrors <- server.ListenAndServe()
 	}()
-
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(signals)
-
 	select {
 	case signal := <-signals:
 		log.Info("shutdown signal received", "signal", signal.String())
@@ -79,6 +75,5 @@ func main() {
 		log.Error("graceful shutdown", "error", err)
 		os.Exit(1)
 	}
-
-	log.Info("library service stopped")
+	log.Info("reservation service stopped")
 }

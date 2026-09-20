@@ -124,8 +124,7 @@ func (client *Client) do(ctx context.Context, method, username string, body any,
 }
 
 func mapError(err error) error {
-	var serviceErr *ServiceError
-	if errors.As(err, &serviceErr) {
+	if serviceErr, ok := errors.AsType[*ServiceError](err); ok {
 		switch serviceErr.StatusCode {
 		case http.StatusNotFound:
 			return domain.ErrRatingNotFound

@@ -9,12 +9,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
-	"libriary_system/library_service/internal/config"
-	libraryhttp "libriary_system/library_service/internal/delivery/http"
-	"libriary_system/library_service/internal/repository/postgres"
-	"libriary_system/library_service/internal/usecase"
+	"libriary_system/gateway_service/internal/config"
+	gatewayhttp "libriary_system/gateway_service/internal/delivery/http"
+	"libriary_system/gateway_service/internal/usecase"
+	libraryclient "libriary_system/shared/client/library"
+	ratingclient "libriary_system/shared/client/rating"
+	reservationclient "libriary_system/shared/client/reservation"
 	"libriary_system/shared/log"
 )
 
@@ -24,44 +24,41 @@ func main() {
 		log.Error("load configuration", "error", err)
 		os.Exit(1)
 	}
-
-	startupCtx, cancelStartup := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancelStartup()
-
-	pool, err := pgxpool.New(startupCtx, cfg.DatabaseURL)
+	libraries, err := libraryclient.NewClient(cfg.LibraryServiceURL, nil)
 	if err != nil {
-		log.Error("create database pool", "error", err)
+		log.Error("configure library client", "error", err)
 		os.Exit(1)
 	}
-	defer pool.Close()
-
-	if err := pool.Ping(startupCtx); err != nil {
-		log.Error("connect to database", "error", err)
+	ratings, err := ratingclient.NewClient(cfg.RatingServiceURL, nil)
+	if err != nil {
+		log.Error("configure rating client", "error", err)
+		os.Exit(1)
+	}
+	reservations, err := reservationclient.NewClient(cfg.ReservationServiceURL, nil)
+	if err != nil {
+		log.Error("configure reservation client", "error", err)
 		os.Exit(1)
 	}
 
-	repository := postgres.NewLibraryPGRepo(pool)
-	libraryUseCase := usecase.NewLibraryUseCase(repository)
-	handler := libraryhttp.NewHandler(libraryUseCase)
+	gateway := usecase.NewGatewayUseCase(libraries, ratings, reservations)
+	handler := gatewayhttp.NewHandler(gateway)
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress,
-		Handler:           libraryhttp.NewRouter(handler),
+		Handler:           gatewayhttp.NewRouter(handler),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      10 * time.Second,
+		WriteTimeout:      20 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
-
 	serverErrors := make(chan error, 1)
 	go func() {
-		log.Info("library service started", "address", cfg.HTTPAddress)
+		log.Info("gateway service started", "address", cfg.HTTPAddress)
 		serverErrors <- server.ListenAndServe()
 	}()
 
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(signals)
-
 	select {
 	case signal := <-signals:
 		log.Info("shutdown signal received", "signal", signal.String())
@@ -72,13 +69,11 @@ func main() {
 		}
 		return
 	}
-
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelShutdown()
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Error("graceful shutdown", "error", err)
 		os.Exit(1)
 	}
-
-	log.Info("library service stopped")
+	log.Info("gateway service stopped")
 }

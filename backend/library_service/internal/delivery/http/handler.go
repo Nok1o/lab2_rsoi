@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	stdhttp "net/http"
 	"strconv"
 
@@ -15,6 +14,7 @@ import (
 
 	"libriary_system/library_service/internal/usecase"
 	"libriary_system/shared/domain"
+	"libriary_system/shared/log"
 	"libriary_system/shared/pagination"
 )
 
@@ -34,11 +34,10 @@ type LibraryUseCase interface {
 
 type Handler struct {
 	libraries LibraryUseCase
-	logger    *slog.Logger
 }
 
-func NewHandler(libraries LibraryUseCase, logger *slog.Logger) *Handler {
-	return &Handler{libraries: libraries, logger: logger}
+func NewHandler(libraries LibraryUseCase) *Handler {
+	return &Handler{libraries: libraries}
 }
 
 func (handler *Handler) ListLibraries(w stdhttp.ResponseWriter, request *stdhttp.Request) {
@@ -171,7 +170,7 @@ func (handler *Handler) writeError(w stdhttp.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrBookUnavailable):
 		writeJSON(w, stdhttp.StatusConflict, errorResponse{Message: err.Error()})
 	default:
-		handler.logger.Error("library request failed", "error", err)
+		log.Error("library request failed", "error", err)
 		writeJSON(w, stdhttp.StatusInternalServerError, errorResponse{Message: "internal server error"})
 	}
 }

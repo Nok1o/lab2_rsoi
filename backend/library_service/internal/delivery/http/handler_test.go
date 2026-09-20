@@ -3,8 +3,6 @@ package http
 import (
 	"context"
 	"encoding/json"
-	"io"
-	"log/slog"
 	stdhttp "net/http"
 	"net/http/httptest"
 	"testing"
@@ -47,7 +45,7 @@ func TestListLibraries(t *testing.T) {
 		nil,
 	)
 
-	NewRouter(NewHandler(stub, testLogger())).ServeHTTP(recorder, request)
+	NewRouter(NewHandler(stub)).ServeHTTP(recorder, request)
 
 	if recorder.Code != stdhttp.StatusOK {
 		t.Fatalf("status = %d, want %d", recorder.Code, stdhttp.StatusOK)
@@ -65,7 +63,7 @@ func TestHealth(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(stdhttp.MethodGet, "/manage/health", nil)
 
-	NewRouter(NewHandler(&libraryUseCaseStub{}, testLogger())).ServeHTTP(recorder, request)
+	NewRouter(NewHandler(&libraryUseCaseStub{})).ServeHTTP(recorder, request)
 
 	if recorder.Code != stdhttp.StatusOK {
 		t.Fatalf("status = %d, want %d", recorder.Code, stdhttp.StatusOK)
@@ -87,8 +85,4 @@ func (stub *libraryUseCaseStub) ListLibrariesByCity(
 	pageToken pagination.PageToken,
 ) (pagination.Page[domain.Library], error) {
 	return stub.listLibraries(ctx, city, pageToken)
-}
-
-func testLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }

@@ -12,6 +12,12 @@ psql \
   --file "$init_directory/scripts/db-$variant.sql"
 
 if [[ "$variant" == "v4" ]]; then
+  PGPASSWORD="${RESERVATIONS_DB_PASSWORD:-test}" psql \
+    --username "${RESERVATIONS_DB_USER:-program}" \
+    --dbname reservations \
+    --set ON_ERROR_STOP=1 \
+    --file "$init_directory/scripts/schema-reservation.sql"
+
   PGPASSWORD="${LIBRARIES_DB_PASSWORD:-test}" psql \
     --username "${LIBRARIES_DB_USER:-program}" \
     --dbname libraries \

@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log/slog"
 	stdhttp "net/http"
 
 	"libriary_system/rating_service/internal/usecase"
 	"libriary_system/shared/domain"
+	"libriary_system/shared/log"
 	"libriary_system/shared/validation"
 )
 
@@ -24,11 +24,10 @@ type RatingUseCase interface {
 
 type Handler struct {
 	ratings RatingUseCase
-	logger  *slog.Logger
 }
 
-func NewHandler(ratings RatingUseCase, logger *slog.Logger) *Handler {
-	return &Handler{ratings: ratings, logger: logger}
+func NewHandler(ratings RatingUseCase) *Handler {
+	return &Handler{ratings: ratings}
 }
 
 func (handler *Handler) GetRating(w stdhttp.ResponseWriter, request *stdhttp.Request) {
@@ -93,7 +92,7 @@ func (handler *Handler) writeError(w stdhttp.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrRatingAlreadyExists):
 		writeJSON(w, stdhttp.StatusConflict, errorResponse{Message: err.Error()})
 	default:
-		handler.logger.Error("rating request failed", "error", err)
+		log.Error("rating request failed", "error", err)
 		writeJSON(w, stdhttp.StatusInternalServerError, errorResponse{Message: "internal server error"})
 	}
 }

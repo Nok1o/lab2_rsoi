@@ -17,7 +17,18 @@ jobs:
 
       - uses: docker/setup-buildx-action@v2
 
-      # TODO build and run unit tests
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Build Go services
+        working-directory: backend
+        run: go build ./...
+
+      - name: Run unit tests
+        working-directory: backend
+        run: go test ./...
 
       - name: Build images
         timeout-minutes: 10
@@ -34,9 +45,8 @@ jobs:
       - name: Run API Tests
         uses: matt-ball/newman-action@master
         with:
-          # TODO insert your variant
-          collection: <variant>/postman/collection.json
-          environment: <variant>/postman/environment.json
+          collection: v4/postman/collection.json
+          environment: v4/postman/environment.json
           delayRequest: 100
           reporters: '[ "cli" ]'
 

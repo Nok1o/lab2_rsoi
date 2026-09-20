@@ -1234,3 +1234,14 @@ buildNumber.properties
 .mvn/timing.properties
 # https://github.com/takari/maven-wrapper#usage-without-binary-jar
 .mvn/wrapper/maven-wrapper.jar
+
+# PostgreSQL initialization scripts are source files, not virtualenv scripts.
+!/postgres/scripts/
+!/postgres/scripts/*.sql
+
+# Shared Go logging package is application source code.
+!/backend/shared/log/
+!/backend/shared/log/*.go
+
+# Go module manifest is required by CI and Docker builds.
+!/backend/go.mod

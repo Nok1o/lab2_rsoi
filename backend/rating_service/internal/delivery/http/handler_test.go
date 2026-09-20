@@ -3,8 +3,6 @@ package http_test
 import (
 	"context"
 	"errors"
-	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -61,7 +59,7 @@ func (repo *memoryRepo) AddStars(_ context.Context, username string, delta, minS
 
 func TestRatingRouter(t *testing.T) {
 	repo := &memoryRepo{ratings: make(map[string]domain.Rating)}
-	handler := ratinghttp.NewHandler(usecase.NewRatingUseCase(repo), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	handler := ratinghttp.NewHandler(usecase.NewRatingUseCase(repo))
 	router := ratinghttp.NewRouter(handler)
 
 	checks := []struct {
