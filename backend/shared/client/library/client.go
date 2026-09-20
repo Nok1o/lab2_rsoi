@@ -1,0 +1,251 @@
+package library
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+
+	"libriary_system/shared/domain"
+	"libriary_system/shared/pagination"
+)
+
+const maxResponseBodySize = 1 << 20
+
+type Client struct {
+	baseURL    *url.URL
+	httpClient *http.Client
+}
+
+type ServiceError struct {
+	StatusCode int
+	Message    string
+}
+
+func (err *ServiceError) Error() string {
+	return fmt.Sprintf("library service returned status %d: %s", err.StatusCode, err.Message)
+}
+
+func NewClient(rawBaseURL string, httpClient *http.Client) (*Client, error) {
+	baseURL, err := url.Parse(strings.TrimSpace(rawBaseURL))
+	if err != nil {
+		return nil, fmt.Errorf("parse library service URL: %w", err)
+	}
+	if baseURL.Scheme != "http" && baseURL.Scheme != "https" {
+		return nil, fmt.Errorf("library service URL must use http or https scheme")
+	}
+	if baseURL.Host == "" {
+		return nil, fmt.Errorf("library service URL must contain a host")
+	}
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 5 * time.Second}
+	}
+
+	return &Client{baseURL: baseURL, httpClient: httpClient}, nil
+}
+
+func (client *Client) ListLibrariesByCity(
+	ctx context.Context,
+	city string,
+	pageToken pagination.PageToken,
+) (pagination.Page[domain.Library], error) {
+	endpoint := client.endpoint("/api/v1/libraries")
+	query := endpoint.Query()
+	query.Set("city", city)
+	setPageToken(query, pageToken)
+	endpoint.RawQuery = query.Encode()
+
+	var response pageResponse[libraryResponse]
+	if err := client.do(ctx, http.MethodGet, endpoint, nil, http.StatusOK, &response); err != nil {
+		return pagination.Page[domain.Library]{}, err
+	}
+
+	return libraryPageToDomain(response), nil
+}
+
+func (client *Client) ListBooksByLibrary(
+	ctx context.Context,
+	libraryUID uuid.UUID,
+	showAll bool,
+	pageToken pagination.PageToken,
+) (pagination.Page[domain.LibraryBook], error) {
+	endpoint := client.endpoint(fmt.Sprintf("/api/v1/libraries/%s/books", libraryUID))
+	query := endpoint.Query()
+	query.Set("showAll", strconv.FormatBool(showAll))
+	setPageToken(query, pageToken)
+	endpoint.RawQuery = query.Encode()
+
+	var response pageResponse[libraryBookResponse]
+	if err := client.do(ctx, http.MethodGet, endpoint, nil, http.StatusOK, &response); err != nil {
+		return pagination.Page[domain.LibraryBook]{}, err
+	}
+
+	return libraryBookPageToDomain(response), nil
+}
+
+func (client *Client) GetLibraryByUID(
+	ctx context.Context,
+	libraryUID uuid.UUID,
+) (domain.Library, error) {
+	endpoint := client.endpoint(fmt.Sprintf("/api/v1/libraries/%s", libraryUID))
+	var response libraryResponse
+	if err := client.do(ctx, http.MethodGet, endpoint, nil, http.StatusOK, &response); err != nil {
+		if hasStatus(err, http.StatusNotFound) {
+			return domain.Library{}, domain.ErrLibraryNotFound
+		}
+		return domain.Library{}, err
+	}
+
+	return response.toDomain(), nil
+}
+
+func (client *Client) GetBookByUID(
+	ctx context.Context,
+	libraryUID uuid.UUID,
+	bookUID uuid.UUID,
+) (domain.LibraryBook, error) {
+	endpoint := client.bookEndpoint(libraryUID, bookUID)
+	var response libraryBookResponse
+	if err := client.do(ctx, http.MethodGet, endpoint, nil, http.StatusOK, &response); err != nil {
+		if hasStatus(err, http.StatusNotFound) {
+			return domain.LibraryBook{}, domain.ErrBookNotFound
+		}
+		return domain.LibraryBook{}, err
+	}
+
+	return response.toDomain(), nil
+}
+
+func (client *Client) ReserveBook(
+	ctx context.Context,
+	libraryUID uuid.UUID,
+	bookUID uuid.UUID,
+) (domain.LibraryBook, error) {
+	endpoint := client.bookEndpoint(libraryUID, bookUID)
+	endpoint.Path += "/reserve"
+
+	var response libraryBookResponse
+	if err := client.do(ctx, http.MethodPost, endpoint, nil, http.StatusOK, &response); err != nil {
+		switch {
+		case hasStatus(err, http.StatusNotFound):
+			return domain.LibraryBook{}, domain.ErrBookNotFound
+		case hasStatus(err, http.StatusConflict):
+			return domain.LibraryBook{}, domain.ErrBookUnavailable
+		default:
+			return domain.LibraryBook{}, err
+		}
+	}
+
+	return response.toDomain(), nil
+}
+
+func (client *Client) ReturnBook(
+	ctx context.Context,
+	libraryUID uuid.UUID,
+	bookUID uuid.UUID,
+	condition domain.BookCondition,
+) error {
+	endpoint := client.bookEndpoint(libraryUID, bookUID)
+	endpoint.Path += "/return"
+	body := returnBookRequest{Condition: condition}
+
+	if err := client.do(ctx, http.MethodPost, endpoint, body, http.StatusNoContent, nil); err != nil {
+		if hasStatus(err, http.StatusNotFound) {
+			return domain.ErrBookNotFound
+		}
+		return err
+	}
+
+	return nil
+}
+
+func (client *Client) bookEndpoint(libraryUID, bookUID uuid.UUID) *url.URL {
+	return client.endpoint(fmt.Sprintf(
+		"/api/v1/libraries/%s/books/%s",
+		libraryUID,
+		bookUID,
+	))
+}
+
+func (client *Client) endpoint(path string) *url.URL {
+	endpoint := *client.baseURL
+	endpoint.Path = strings.TrimRight(endpoint.Path, "/") + path
+	endpoint.RawQuery = ""
+	endpoint.Fragment = ""
+
+	return &endpoint
+}
+
+func (client *Client) do(
+	ctx context.Context,
+	method string,
+	endpoint *url.URL,
+	body any,
+	expectedStatus int,
+	responseTarget any,
+) error {
+	var requestBody io.Reader
+	if body != nil {
+		encodedBody, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("encode library service request: %w", err)
+		}
+		requestBody = bytes.NewReader(encodedBody)
+	}
+
+	request, err := http.NewRequestWithContext(ctx, method, endpoint.String(), requestBody)
+	if err != nil {
+		return fmt.Errorf("create library service request: %w", err)
+	}
+	request.Header.Set("Accept", "application/json")
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
+
+	response, err := client.httpClient.Do(request)
+	if err != nil {
+		return fmt.Errorf("call library service: %w", err)
+	}
+	defer response.Body.Close()
+
+	limitedBody := io.LimitReader(response.Body, maxResponseBodySize)
+	if response.StatusCode != expectedStatus {
+		var serviceResponse errorResponse
+		if err := json.NewDecoder(limitedBody).Decode(&serviceResponse); err != nil {
+			serviceResponse.Message = http.StatusText(response.StatusCode)
+		}
+		return &ServiceError{
+			StatusCode: response.StatusCode,
+			Message:    serviceResponse.Message,
+		}
+	}
+
+	if responseTarget == nil {
+		_, _ = io.Copy(io.Discard, limitedBody)
+		return nil
+	}
+	if err := json.NewDecoder(limitedBody).Decode(responseTarget); err != nil {
+		return fmt.Errorf("decode library service response: %w", err)
+	}
+
+	return nil
+}
+
+func setPageToken(query url.Values, pageToken pagination.PageToken) {
+	query.Set("limit", strconv.Itoa(pageToken.Limit))
+	query.Set("offset", strconv.Itoa(pageToken.Offset))
+}
+
+func hasStatus(err error, status int) bool {
+	var serviceErr *ServiceError
+	return errors.As(err, &serviceErr) && serviceErr.StatusCode == status
+}
