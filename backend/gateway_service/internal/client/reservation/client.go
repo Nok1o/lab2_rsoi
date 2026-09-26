@@ -14,23 +14,26 @@ import (
 
 	"github.com/google/uuid"
 
-	"libriary_system/shared/domain"
+	"libriary_system/gateway_service/internal/domain"
+	"libriary_system/gateway_service/internal/usecase"
 )
 
 const maxResponseBodySize = 1 << 20
+
+var _ usecase.ReservationService = (*Client)(nil)
 
 type Client struct {
 	baseURL    *url.URL
 	httpClient *http.Client
 }
 
-type ServiceError struct {
-	StatusCode int
-	Message    string
+type serviceError struct {
+	statusCode int
+	message    string
 }
 
-func (err *ServiceError) Error() string {
-	return fmt.Sprintf("reservation service returned status %d: %s", err.StatusCode, err.Message)
+func (err *serviceError) Error() string {
+	return fmt.Sprintf("reservation service returned status %d: %s", err.statusCode, err.message)
 }
 
 func NewClient(rawBaseURL string, httpClient *http.Client) (*Client, error) {
@@ -57,16 +60,20 @@ func (client *Client) ListByUsername(ctx context.Context, username string) ([]do
 	}
 	reservations := make([]domain.Reservation, 0, len(response))
 	for _, item := range response {
-		reservation, err := item.toDomain(username)
+		reservation, err := toReservation(item, username)
 		if err != nil {
-			return nil, err
+			return nil, dependencyError(err)
 		}
 		reservations = append(reservations, reservation)
 	}
 	return reservations, nil
 }
 
-func (client *Client) CountByUsernameAndStatus(ctx context.Context, username string, status domain.ReservationStatus) (int, error) {
+func (client *Client) CountByUsernameAndStatus(
+	ctx context.Context,
+	username string,
+	status domain.ReservationStatus,
+) (int, error) {
 	var response countResponse
 	path := "/api/v1/reservations/count?status=" + url.QueryEscape(string(status))
 	if err := client.do(ctx, http.MethodGet, path, username, nil, http.StatusOK, &response); err != nil {
@@ -75,34 +82,66 @@ func (client *Client) CountByUsernameAndStatus(ctx context.Context, username str
 	return response.Count, nil
 }
 
-func (client *Client) GetByUIDAndUsername(ctx context.Context, reservationUID uuid.UUID, username string) (domain.Reservation, error) {
+func (client *Client) GetByUIDAndUsername(
+	ctx context.Context,
+	reservationUID uuid.UUID,
+	username string,
+) (domain.Reservation, error) {
 	var response reservationResponse
 	path := "/api/v1/reservations/" + reservationUID.String()
 	if err := client.do(ctx, http.MethodGet, path, username, nil, http.StatusOK, &response); err != nil {
 		return domain.Reservation{}, mapError(err)
 	}
-	return response.toDomain(username)
+	reservation, err := toReservation(response, username)
+	if err != nil {
+		return domain.Reservation{}, dependencyError(err)
+	}
+	return reservation, nil
 }
 
-func (client *Client) Rent(ctx context.Context, username string, libraryUID, bookUID uuid.UUID, tillDate time.Time) (domain.Reservation, error) {
+func (client *Client) Rent(
+	ctx context.Context,
+	username string,
+	libraryUID, bookUID uuid.UUID,
+	tillDate time.Time,
+) (domain.Reservation, error) {
 	var response reservationResponse
 	body := rentRequest{BookUID: bookUID, LibraryUID: libraryUID, TillDate: tillDate.Format(dateLayout)}
 	if err := client.do(ctx, http.MethodPost, "/api/v1/reservations", username, body, http.StatusCreated, &response); err != nil {
 		return domain.Reservation{}, mapError(err)
 	}
-	return response.toDomain(username)
+	reservation, err := toReservation(response, username)
+	if err != nil {
+		return domain.Reservation{}, dependencyError(err)
+	}
+	return reservation, nil
 }
 
-func (client *Client) Return(ctx context.Context, reservationUID uuid.UUID, username string, returnDate time.Time) (domain.Reservation, error) {
+func (client *Client) Return(
+	ctx context.Context,
+	reservationUID uuid.UUID,
+	username string,
+	returnDate time.Time,
+) (domain.Reservation, error) {
 	var response reservationResponse
 	path := "/api/v1/reservations/" + reservationUID.String() + "/return"
 	if err := client.do(ctx, http.MethodPost, path, username, returnRequest{Date: returnDate.Format(dateLayout)}, http.StatusOK, &response); err != nil {
 		return domain.Reservation{}, mapError(err)
 	}
-	return response.toDomain(username)
+	reservation, err := toReservation(response, username)
+	if err != nil {
+		return domain.Reservation{}, dependencyError(err)
+	}
+	return reservation, nil
 }
 
-func (client *Client) do(ctx context.Context, method, path, username string, body any, expectedStatus int, result any) error {
+func (client *Client) do(
+	ctx context.Context,
+	method, path, username string,
+	body any,
+	expectedStatus int,
+	result any,
+) error {
 	endpoint := *client.baseURL
 	pathParts := strings.SplitN(path, "?", 2)
 	endpoint.Path = strings.TrimRight(endpoint.Path, "/") + pathParts[0]
@@ -134,13 +173,14 @@ func (client *Client) do(ctx context.Context, method, path, username string, bod
 		return fmt.Errorf("call reservation service: %w", err)
 	}
 	defer response.Body.Close()
+
 	limitedBody := io.LimitReader(response.Body, maxResponseBodySize)
 	if response.StatusCode != expectedStatus {
 		var serviceResponse errorResponse
 		if err := json.NewDecoder(limitedBody).Decode(&serviceResponse); err != nil || serviceResponse.Message == "" {
 			serviceResponse.Message = http.StatusText(response.StatusCode)
 		}
-		return &ServiceError{StatusCode: response.StatusCode, Message: serviceResponse.Message}
+		return &serviceError{statusCode: response.StatusCode, message: serviceResponse.Message}
 	}
 	if err := json.NewDecoder(limitedBody).Decode(result); err != nil {
 		return fmt.Errorf("decode reservation response: %w", err)
@@ -149,13 +189,20 @@ func (client *Client) do(ctx context.Context, method, path, username string, bod
 }
 
 func mapError(err error) error {
-	if serviceErr, ok := errors.AsType[*ServiceError](err); ok {
-		switch serviceErr.StatusCode {
+	if err == nil {
+		return nil
+	}
+	if serviceErr, ok := errors.AsType[*serviceError](err); ok {
+		switch serviceErr.statusCode {
 		case http.StatusNotFound:
 			return domain.ErrReservationNotFound
 		case http.StatusConflict:
 			return domain.ErrReservationNotRented
 		}
 	}
-	return err
+	return dependencyError(err)
+}
+
+func dependencyError(err error) error {
+	return &usecase.DependencyError{Service: "reservation service", Cause: err}
 }

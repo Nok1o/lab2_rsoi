@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"libriary_system/shared/domain"
+	"libriary_system/gateway_service/internal/domain"
 )
 
 const dateLayout = "2006-01-02"
@@ -38,22 +38,17 @@ type errorResponse struct {
 	Message string `json:"message"`
 }
 
-func (response reservationResponse) toDomain(username string) (domain.Reservation, error) {
-	startDate, err := time.Parse(dateLayout, response.StartDate)
+func toReservation(source reservationResponse, username string) (domain.Reservation, error) {
+	startDate, err := time.Parse(dateLayout, source.StartDate)
 	if err != nil {
 		return domain.Reservation{}, fmt.Errorf("parse reservation start date: %w", err)
 	}
-	tillDate, err := time.Parse(dateLayout, response.TillDate)
+	tillDate, err := time.Parse(dateLayout, source.TillDate)
 	if err != nil {
 		return domain.Reservation{}, fmt.Errorf("parse reservation till date: %w", err)
 	}
 	return domain.Reservation{
-		Id:        response.UID,
-		Username:  username,
-		BookId:    response.BookUID,
-		LibraryId: response.LibraryUID,
-		Status:    response.Status,
-		StartDate: startDate,
-		TillDate:  tillDate,
+		Id: source.UID, Username: username, BookId: source.BookUID, LibraryId: source.LibraryUID,
+		Status: source.Status, StartDate: startDate, TillDate: tillDate,
 	}, nil
 }

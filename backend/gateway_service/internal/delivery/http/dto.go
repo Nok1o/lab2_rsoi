@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"libriary_system/gateway_service/internal/domain"
 	"libriary_system/gateway_service/internal/usecase"
-	"libriary_system/shared/domain"
 	"libriary_system/shared/pagination"
 )
 

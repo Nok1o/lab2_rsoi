@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,3 +24,8 @@ type Reservation struct {
 	StartDate time.Time
 	TillDate  time.Time
 }
+
+var (
+	ErrReservationNotFound  = errors.New("reservation not found")
+	ErrReservationNotRented = errors.New("reservation is not rented")
+)

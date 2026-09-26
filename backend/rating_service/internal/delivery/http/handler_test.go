@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	ratinghttp "libriary_system/rating_service/internal/delivery/http"
+	"libriary_system/rating_service/internal/domain"
 	"libriary_system/rating_service/internal/usecase"
-	"libriary_system/shared/domain"
 )
 
 type memoryRepo struct {

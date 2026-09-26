@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"libriary_system/shared/domain"
+	"libriary_system/rating_service/internal/domain"
 )
 
 func TestRatingPGRepo(t *testing.T) {

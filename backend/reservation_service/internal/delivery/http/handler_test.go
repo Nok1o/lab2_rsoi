@@ -12,8 +12,8 @@ import (
 	"github.com/google/uuid"
 
 	reservationhttp "libriary_system/reservation_service/internal/delivery/http"
+	"libriary_system/reservation_service/internal/domain"
 	"libriary_system/reservation_service/internal/usecase"
-	"libriary_system/shared/domain"
 )
 
 type memoryRepo struct {

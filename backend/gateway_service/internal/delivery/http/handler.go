@@ -9,11 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 
+	"libriary_system/gateway_service/internal/domain"
 	"libriary_system/gateway_service/internal/usecase"
-	libraryclient "libriary_system/shared/client/library"
-	ratingclient "libriary_system/shared/client/rating"
-	reservationclient "libriary_system/shared/client/reservation"
-	"libriary_system/shared/domain"
 	"libriary_system/shared/log"
 	"libriary_system/shared/pagination"
 )
@@ -143,27 +140,9 @@ func (handler *Handler) writeError(w stdhttp.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrBookUnavailable), errors.Is(err, domain.ErrReservationNotRented), errors.Is(err, usecase.ErrRentalLimitReached):
 		newErrorResponse().message(err.Error()).writeResponse(w, stdhttp.StatusConflict)
 	default:
-		status, ok := upstreamStatus(err)
-		if ok && (status == stdhttp.StatusBadRequest || status == stdhttp.StatusNotFound || status == stdhttp.StatusConflict) {
-			newErrorResponse().message(err.Error()).writeResponse(w, status)
-			return
-		}
 		log.Error("gateway request failed", "error", err)
 		newErrorResponse().message("upstream service error").writeResponse(w, stdhttp.StatusBadGateway)
 	}
-}
-
-func upstreamStatus(err error) (int, bool) {
-	if libraryErr, ok := errors.AsType[*libraryclient.ServiceError](err); ok {
-		return libraryErr.StatusCode, true
-	}
-	if ratingErr, ok := errors.AsType[*ratingclient.ServiceError](err); ok {
-		return ratingErr.StatusCode, true
-	}
-	if reservationErr, ok := errors.AsType[*reservationclient.ServiceError](err); ok {
-		return reservationErr.StatusCode, true
-	}
-	return 0, false
 }
 
 func parseUID(w stdhttp.ResponseWriter, request *stdhttp.Request, name string) (uuid.UUID, bool) {

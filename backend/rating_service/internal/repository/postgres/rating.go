@@ -9,8 +9,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"libriary_system/rating_service/internal/domain"
 	"libriary_system/rating_service/internal/usecase"
-	"libriary_system/shared/domain"
 )
 
 var _ usecase.RatingRepository = (*RatingPGRepo)(nil)

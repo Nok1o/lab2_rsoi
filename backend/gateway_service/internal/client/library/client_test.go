@@ -9,7 +9,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"libriary_system/shared/domain"
+	"libriary_system/gateway_service/internal/domain"
+	"libriary_system/gateway_service/internal/usecase"
 	"libriary_system/shared/pagination"
 )
 
@@ -53,20 +54,42 @@ func TestClientListLibrariesByCity(t *testing.T) {
 	}
 }
 
-func TestClientReserveBookMapsUnavailableError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
-		_, _ = w.Write([]byte(`{"message":"book is not available"}`))
-	}))
-	defer server.Close()
-	client, err := NewClient(server.URL, server.Client())
-	if err != nil {
-		t.Fatalf("NewClient() error = %v", err)
+func TestClientMapsLibraryErrors(t *testing.T) {
+	for _, check := range []struct {
+		name   string
+		status int
+		want   error
+	}{
+		{name: "unavailable", status: http.StatusConflict, want: domain.ErrBookUnavailable},
+		{name: "dependency", status: http.StatusInternalServerError},
+	} {
+		t.Run(check.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(check.status)
+				_, _ = w.Write([]byte(`{"message":"failed"}`))
+			}))
+			defer server.Close()
+			client, err := NewClient(server.URL, server.Client())
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = client.ReserveBook(context.Background(), uuid.New(), uuid.New())
+			if check.want != nil && !errors.Is(err, check.want) {
+				t.Fatalf("error = %v, want %v", err, check.want)
+			}
+			if check.want == nil {
+				var dependencyErr *usecase.DependencyError
+				if !errors.As(err, &dependencyErr) {
+					t.Fatalf("error = %v, want DependencyError", err)
+				}
+			}
+		})
 	}
+}
 
-	_, err = client.ReserveBook(context.Background(), uuid.New(), uuid.New())
-	if !errors.Is(err, domain.ErrBookUnavailable) {
-		t.Fatalf("ReserveBook() error = %v, want ErrBookUnavailable", err)
+func TestNewClientRejectsInvalidURL(t *testing.T) {
+	if _, err := NewClient("library-service:8060", nil); err == nil {
+		t.Fatal("expected invalid URL error")
 	}
 }

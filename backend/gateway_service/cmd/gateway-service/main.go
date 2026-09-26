@@ -9,12 +9,12 @@ import (
 	"syscall"
 	"time"
 
+	libraryclient "libriary_system/gateway_service/internal/client/library"
+	ratingclient "libriary_system/gateway_service/internal/client/rating"
+	reservationclient "libriary_system/gateway_service/internal/client/reservation"
 	"libriary_system/gateway_service/internal/config"
 	gatewayhttp "libriary_system/gateway_service/internal/delivery/http"
 	"libriary_system/gateway_service/internal/usecase"
-	libraryclient "libriary_system/shared/client/library"
-	ratingclient "libriary_system/shared/client/rating"
-	reservationclient "libriary_system/shared/client/reservation"
 	"libriary_system/shared/log"
 )
 

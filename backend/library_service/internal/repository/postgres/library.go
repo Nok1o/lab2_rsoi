@@ -9,8 +9,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"libriary_system/library_service/internal/domain"
 	"libriary_system/library_service/internal/usecase"
-	"libriary_system/shared/domain"
 	"libriary_system/shared/pagination"
 )
 

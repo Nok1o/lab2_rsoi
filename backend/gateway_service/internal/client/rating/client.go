@@ -12,23 +12,26 @@ import (
 	"strings"
 	"time"
 
-	"libriary_system/shared/domain"
+	"libriary_system/gateway_service/internal/domain"
+	"libriary_system/gateway_service/internal/usecase"
 )
 
 const maxResponseBodySize = 1 << 20
+
+var _ usecase.RatingService = (*Client)(nil)
 
 type Client struct {
 	baseURL    *url.URL
 	httpClient *http.Client
 }
 
-type ServiceError struct {
-	StatusCode int
-	Message    string
+type serviceError struct {
+	statusCode int
+	message    string
 }
 
-func (err *ServiceError) Error() string {
-	return fmt.Sprintf("rating service returned status %d: %s", err.StatusCode, err.Message)
+func (err *serviceError) Error() string {
+	return fmt.Sprintf("rating service returned status %d: %s", err.statusCode, err.message)
 }
 
 func NewClient(rawBaseURL string, httpClient *http.Client) (*Client, error) {
@@ -57,15 +60,14 @@ func (client *Client) GetByUsername(ctx context.Context, username string) (domai
 }
 
 func (client *Client) Create(ctx context.Context, rating domain.Rating) error {
-	return mapError(client.do(ctx, http.MethodPost, rating.Username, setRatingRequest{Stars: rating.StarsCount}, http.StatusCreated, nil))
-}
-
-func (client *Client) UpdateRating(ctx context.Context, rating domain.Rating) (domain.Rating, error) {
-	var response ratingResponse
-	if err := client.do(ctx, http.MethodPut, rating.Username, setRatingRequest{Stars: rating.StarsCount}, http.StatusOK, &response); err != nil {
-		return domain.Rating{}, mapError(err)
-	}
-	return domain.Rating{Username: rating.Username, StarsCount: response.Stars}, nil
+	return mapError(client.do(
+		ctx,
+		http.MethodPost,
+		rating.Username,
+		setRatingRequest{Stars: rating.StarsCount},
+		http.StatusCreated,
+		nil,
+	))
 }
 
 func (client *Client) AddStars(ctx context.Context, username string, delta int) (domain.Rating, error) {
@@ -76,7 +78,13 @@ func (client *Client) AddStars(ctx context.Context, username string, delta int) 
 	return domain.Rating{Username: username, StarsCount: response.Stars}, nil
 }
 
-func (client *Client) do(ctx context.Context, method, username string, body any, expectedStatus int, result any) error {
+func (client *Client) do(
+	ctx context.Context,
+	method, username string,
+	body any,
+	expectedStatus int,
+	result any,
+) error {
 	endpoint := *client.baseURL
 	endpoint.Path = strings.TrimRight(endpoint.Path, "/") + "/api/v1/rating"
 	endpoint.RawQuery = ""
@@ -99,19 +107,19 @@ func (client *Client) do(ctx context.Context, method, username string, body any,
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
-
 	response, err := client.httpClient.Do(request)
 	if err != nil {
 		return fmt.Errorf("call rating service: %w", err)
 	}
 	defer response.Body.Close()
+
 	limitedBody := io.LimitReader(response.Body, maxResponseBodySize)
 	if response.StatusCode != expectedStatus {
 		var serviceResponse errorResponse
 		if err := json.NewDecoder(limitedBody).Decode(&serviceResponse); err != nil || serviceResponse.Message == "" {
 			serviceResponse.Message = http.StatusText(response.StatusCode)
 		}
-		return &ServiceError{StatusCode: response.StatusCode, Message: serviceResponse.Message}
+		return &serviceError{statusCode: response.StatusCode, message: serviceResponse.Message}
 	}
 	if result == nil {
 		_, _ = io.Copy(io.Discard, limitedBody)
@@ -124,13 +132,16 @@ func (client *Client) do(ctx context.Context, method, username string, body any,
 }
 
 func mapError(err error) error {
-	if serviceErr, ok := errors.AsType[*ServiceError](err); ok {
-		switch serviceErr.StatusCode {
+	if err == nil {
+		return nil
+	}
+	if serviceErr, ok := errors.AsType[*serviceError](err); ok {
+		switch serviceErr.statusCode {
 		case http.StatusNotFound:
 			return domain.ErrRatingNotFound
 		case http.StatusConflict:
 			return domain.ErrRatingAlreadyExists
 		}
 	}
-	return err
+	return &usecase.DependencyError{Service: "rating service", Cause: err}
 }

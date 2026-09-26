@@ -15,24 +15,27 @@ import (
 
 	"github.com/google/uuid"
 
-	"libriary_system/shared/domain"
+	"libriary_system/gateway_service/internal/domain"
+	"libriary_system/gateway_service/internal/usecase"
 	"libriary_system/shared/pagination"
 )
 
 const maxResponseBodySize = 1 << 20
+
+var _ usecase.LibraryService = (*Client)(nil)
 
 type Client struct {
 	baseURL    *url.URL
 	httpClient *http.Client
 }
 
-type ServiceError struct {
-	StatusCode int
-	Message    string
+type serviceError struct {
+	statusCode int
+	message    string
 }
 
-func (err *ServiceError) Error() string {
-	return fmt.Sprintf("library service returned status %d: %s", err.StatusCode, err.Message)
+func (err *serviceError) Error() string {
+	return fmt.Sprintf("library service returned status %d: %s", err.statusCode, err.message)
 }
 
 func NewClient(rawBaseURL string, httpClient *http.Client) (*Client, error) {
@@ -49,7 +52,6 @@ func NewClient(rawBaseURL string, httpClient *http.Client) (*Client, error) {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 5 * time.Second}
 	}
-
 	return &Client{baseURL: baseURL, httpClient: httpClient}, nil
 }
 
@@ -66,10 +68,13 @@ func (client *Client) ListLibrariesByCity(
 
 	var response pageResponse[libraryResponse]
 	if err := client.do(ctx, http.MethodGet, endpoint, nil, http.StatusOK, &response); err != nil {
-		return pagination.Page[domain.Library]{}, err
+		return pagination.Page[domain.Library]{}, dependencyError(err)
 	}
-
-	return libraryPageToDomain(response), nil
+	items := make([]domain.Library, 0, len(response.Items))
+	for _, item := range response.Items {
+		items = append(items, toLibrary(item))
+	}
+	return pagination.Page[domain.Library]{Items: items, Total: response.Total}, nil
 }
 
 func (client *Client) ListBooksByLibrary(
@@ -86,32 +91,30 @@ func (client *Client) ListBooksByLibrary(
 
 	var response pageResponse[libraryBookResponse]
 	if err := client.do(ctx, http.MethodGet, endpoint, nil, http.StatusOK, &response); err != nil {
-		return pagination.Page[domain.LibraryBook]{}, err
+		return pagination.Page[domain.LibraryBook]{}, dependencyError(err)
 	}
-
-	return libraryBookPageToDomain(response), nil
+	items := make([]domain.LibraryBook, 0, len(response.Items))
+	for _, item := range response.Items {
+		items = append(items, toLibraryBook(item))
+	}
+	return pagination.Page[domain.LibraryBook]{Items: items, Total: response.Total}, nil
 }
 
-func (client *Client) GetLibraryByUID(
-	ctx context.Context,
-	libraryUID uuid.UUID,
-) (domain.Library, error) {
+func (client *Client) GetLibraryByUID(ctx context.Context, libraryUID uuid.UUID) (domain.Library, error) {
 	endpoint := client.endpoint(fmt.Sprintf("/api/v1/libraries/%s", libraryUID))
 	var response libraryResponse
 	if err := client.do(ctx, http.MethodGet, endpoint, nil, http.StatusOK, &response); err != nil {
 		if hasStatus(err, http.StatusNotFound) {
 			return domain.Library{}, domain.ErrLibraryNotFound
 		}
-		return domain.Library{}, err
+		return domain.Library{}, dependencyError(err)
 	}
-
-	return response.toDomain(), nil
+	return toLibrary(response), nil
 }
 
 func (client *Client) GetBookByUID(
 	ctx context.Context,
-	libraryUID uuid.UUID,
-	bookUID uuid.UUID,
+	libraryUID, bookUID uuid.UUID,
 ) (domain.LibraryBook, error) {
 	endpoint := client.bookEndpoint(libraryUID, bookUID)
 	var response libraryBookResponse
@@ -119,20 +122,17 @@ func (client *Client) GetBookByUID(
 		if hasStatus(err, http.StatusNotFound) {
 			return domain.LibraryBook{}, domain.ErrBookNotFound
 		}
-		return domain.LibraryBook{}, err
+		return domain.LibraryBook{}, dependencyError(err)
 	}
-
-	return response.toDomain(), nil
+	return toLibraryBook(response), nil
 }
 
 func (client *Client) ReserveBook(
 	ctx context.Context,
-	libraryUID uuid.UUID,
-	bookUID uuid.UUID,
+	libraryUID, bookUID uuid.UUID,
 ) (domain.LibraryBook, error) {
 	endpoint := client.bookEndpoint(libraryUID, bookUID)
 	endpoint.Path += "/reserve"
-
 	var response libraryBookResponse
 	if err := client.do(ctx, http.MethodPost, endpoint, nil, http.StatusOK, &response); err != nil {
 		switch {
@@ -141,39 +141,30 @@ func (client *Client) ReserveBook(
 		case hasStatus(err, http.StatusConflict):
 			return domain.LibraryBook{}, domain.ErrBookUnavailable
 		default:
-			return domain.LibraryBook{}, err
+			return domain.LibraryBook{}, dependencyError(err)
 		}
 	}
-
-	return response.toDomain(), nil
+	return toLibraryBook(response), nil
 }
 
 func (client *Client) ReturnBook(
 	ctx context.Context,
-	libraryUID uuid.UUID,
-	bookUID uuid.UUID,
+	libraryUID, bookUID uuid.UUID,
 	condition domain.BookCondition,
 ) error {
 	endpoint := client.bookEndpoint(libraryUID, bookUID)
 	endpoint.Path += "/return"
-	body := returnBookRequest{Condition: condition}
-
-	if err := client.do(ctx, http.MethodPost, endpoint, body, http.StatusNoContent, nil); err != nil {
+	if err := client.do(ctx, http.MethodPost, endpoint, returnBookRequest{Condition: condition}, http.StatusNoContent, nil); err != nil {
 		if hasStatus(err, http.StatusNotFound) {
 			return domain.ErrBookNotFound
 		}
-		return err
+		return dependencyError(err)
 	}
-
 	return nil
 }
 
 func (client *Client) bookEndpoint(libraryUID, bookUID uuid.UUID) *url.URL {
-	return client.endpoint(fmt.Sprintf(
-		"/api/v1/libraries/%s/books/%s",
-		libraryUID,
-		bookUID,
-	))
+	return client.endpoint(fmt.Sprintf("/api/v1/libraries/%s/books/%s", libraryUID, bookUID))
 }
 
 func (client *Client) endpoint(path string) *url.URL {
@@ -181,7 +172,6 @@ func (client *Client) endpoint(path string) *url.URL {
 	endpoint.Path = strings.TrimRight(endpoint.Path, "/") + path
 	endpoint.RawQuery = ""
 	endpoint.Fragment = ""
-
 	return &endpoint
 }
 
@@ -201,7 +191,6 @@ func (client *Client) do(
 		}
 		requestBody = bytes.NewReader(encodedBody)
 	}
-
 	request, err := http.NewRequestWithContext(ctx, method, endpoint.String(), requestBody)
 	if err != nil {
 		return fmt.Errorf("create library service request: %w", err)
@@ -210,7 +199,6 @@ func (client *Client) do(
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
-
 	response, err := client.httpClient.Do(request)
 	if err != nil {
 		return fmt.Errorf("call library service: %w", err)
@@ -220,15 +208,11 @@ func (client *Client) do(
 	limitedBody := io.LimitReader(response.Body, maxResponseBodySize)
 	if response.StatusCode != expectedStatus {
 		var serviceResponse errorResponse
-		if err := json.NewDecoder(limitedBody).Decode(&serviceResponse); err != nil {
+		if err := json.NewDecoder(limitedBody).Decode(&serviceResponse); err != nil || serviceResponse.Message == "" {
 			serviceResponse.Message = http.StatusText(response.StatusCode)
 		}
-		return &ServiceError{
-			StatusCode: response.StatusCode,
-			Message:    serviceResponse.Message,
-		}
+		return &serviceError{statusCode: response.StatusCode, message: serviceResponse.Message}
 	}
-
 	if responseTarget == nil {
 		_, _ = io.Copy(io.Discard, limitedBody)
 		return nil
@@ -236,7 +220,6 @@ func (client *Client) do(
 	if err := json.NewDecoder(limitedBody).Decode(responseTarget); err != nil {
 		return fmt.Errorf("decode library service response: %w", err)
 	}
-
 	return nil
 }
 
@@ -246,6 +229,10 @@ func setPageToken(query url.Values, pageToken pagination.PageToken) {
 }
 
 func hasStatus(err error, status int) bool {
-	var serviceErr *ServiceError
-	return errors.As(err, &serviceErr) && serviceErr.StatusCode == status
+	var serviceErr *serviceError
+	return errors.As(err, &serviceErr) && serviceErr.statusCode == status
+}
+
+func dependencyError(err error) error {
+	return &usecase.DependencyError{Service: "library service", Cause: err}
 }

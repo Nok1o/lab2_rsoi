@@ -9,8 +9,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"libriary_system/reservation_service/internal/domain"
 	"libriary_system/reservation_service/internal/usecase"
-	"libriary_system/shared/domain"
 )
 
 var _ usecase.ReservationRepository = (*ReservationPGRepo)(nil)

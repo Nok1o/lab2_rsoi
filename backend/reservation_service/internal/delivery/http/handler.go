@@ -11,8 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 
+	"libriary_system/reservation_service/internal/domain"
 	"libriary_system/reservation_service/internal/usecase"
-	"libriary_system/shared/domain"
 	"libriary_system/shared/log"
 )
 

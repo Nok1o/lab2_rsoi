@@ -11,7 +11,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"libriary_system/shared/domain"
+	"libriary_system/gateway_service/internal/domain"
+	"libriary_system/gateway_service/internal/usecase"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -53,7 +54,11 @@ func TestClientOperations(t *testing.T) {
 			t.Errorf("unexpected request: %s %s?%s", request.Method, request.URL.Path, request.URL.RawQuery)
 			code, body = http.StatusNotFound, `{"message":"not found"}`
 		}
-		return &http.Response{StatusCode: code, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+		return &http.Response{
+			StatusCode: code,
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Header:     make(http.Header),
+		}, nil
 	})
 	client, err := NewClient("http://reservation-service:8070", &http.Client{Transport: transport})
 	if err != nil {
@@ -85,22 +90,34 @@ func TestClientOperations(t *testing.T) {
 
 func TestClientMapsErrors(t *testing.T) {
 	for _, check := range []struct {
-		status int
-		want   error
+		status     int
+		want       error
+		dependency bool
 	}{
-		{http.StatusNotFound, domain.ErrReservationNotFound},
-		{http.StatusConflict, domain.ErrReservationNotRented},
+		{status: http.StatusNotFound, want: domain.ErrReservationNotFound},
+		{status: http.StatusConflict, want: domain.ErrReservationNotRented},
+		{status: http.StatusInternalServerError, dependency: true},
 	} {
 		transport := roundTripFunc(func(_ *http.Request) (*http.Response, error) {
-			return &http.Response{StatusCode: check.status, Body: io.NopCloser(strings.NewReader(`{"message":"failed"}`)), Header: make(http.Header)}, nil
+			return &http.Response{
+				StatusCode: check.status,
+				Body:       io.NopCloser(strings.NewReader(`{"message":"failed"}`)),
+				Header:     make(http.Header),
+			}, nil
 		})
 		client, err := NewClient("http://reservation-service:8070", &http.Client{Transport: transport})
 		if err != nil {
 			t.Fatal(err)
 		}
 		_, err = client.GetByUIDAndUsername(context.Background(), uuid.New(), "alice")
-		if !errors.Is(err, check.want) {
+		if check.want != nil && !errors.Is(err, check.want) {
 			t.Fatalf("error = %v, want %v", err, check.want)
+		}
+		if check.dependency {
+			var dependencyErr *usecase.DependencyError
+			if !errors.As(err, &dependencyErr) {
+				t.Fatalf("error = %v, want DependencyError", err)
+			}
 		}
 	}
 }

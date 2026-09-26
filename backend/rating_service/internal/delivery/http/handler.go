@@ -7,8 +7,8 @@ import (
 	"io"
 	stdhttp "net/http"
 
+	"libriary_system/rating_service/internal/domain"
 	"libriary_system/rating_service/internal/usecase"
-	"libriary_system/shared/domain"
 	"libriary_system/shared/log"
 	"libriary_system/shared/validation"
 )

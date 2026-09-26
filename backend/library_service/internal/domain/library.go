@@ -1,6 +1,10 @@
 package domain
 
-import "github.com/google/uuid"
+import (
+	"errors"
+
+	"github.com/google/uuid"
+)
 
 type BookCondition string
 
@@ -29,3 +33,9 @@ type LibraryBook struct {
 	Book
 	AvailableCount int
 }
+
+var (
+	ErrLibraryNotFound = errors.New("library not found")
+	ErrBookNotFound    = errors.New("book not found in library")
+	ErrBookUnavailable = errors.New("book is not available")
+)

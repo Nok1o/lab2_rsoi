@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"libriary_system/shared/domain"
+	"libriary_system/reservation_service/internal/domain"
 )
 
 func TestReservationPGRepo(t *testing.T) {

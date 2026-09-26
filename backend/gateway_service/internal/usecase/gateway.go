@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"libriary_system/shared/domain"
+	"libriary_system/gateway_service/internal/domain"
 	"libriary_system/shared/log"
 	"libriary_system/shared/pagination"
 	"libriary_system/shared/validation"
@@ -104,6 +104,17 @@ func (useCase *GatewayUseCase) GetRating(ctx context.Context, username string) (
 	if !errors.Is(err, domain.ErrRatingNotFound) {
 		return domain.Rating{}, err
 	}
+	return domain.Rating{Username: username, StarsCount: initialStars}, nil
+}
+
+func (useCase *GatewayUseCase) ensureRating(ctx context.Context, username string) (domain.Rating, error) {
+	rating, err := useCase.ratings.GetByUsername(ctx, username)
+	if err == nil {
+		return rating, nil
+	}
+	if !errors.Is(err, domain.ErrRatingNotFound) {
+		return domain.Rating{}, err
+	}
 	rating = domain.Rating{Username: username, StarsCount: initialStars}
 	if err := useCase.ratings.Create(ctx, rating); err != nil {
 		if errors.Is(err, domain.ErrRatingAlreadyExists) {
@@ -164,7 +175,7 @@ func (useCase *GatewayUseCase) Rent(
 	if err != nil {
 		return ReservationDetails{}, err
 	}
-	rating, err := useCase.GetRating(ctx, username)
+	rating, err := useCase.ensureRating(ctx, username)
 	if err != nil {
 		return ReservationDetails{}, err
 	}
@@ -231,7 +242,7 @@ func (useCase *GatewayUseCase) Return(
 	if err != nil {
 		return err
 	}
-	if _, err := useCase.GetRating(ctx, username); err != nil {
+	if _, err := useCase.ensureRating(ctx, username); err != nil {
 		return err
 	}
 	completed, err := useCase.reservations.Return(ctx, reservationUID, username, returnDate)

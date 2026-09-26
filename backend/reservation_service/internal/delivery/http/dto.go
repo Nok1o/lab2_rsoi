@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"libriary_system/shared/domain"
+	"libriary_system/reservation_service/internal/domain"
 )
 
 const dateLayout = "2006-01-02"

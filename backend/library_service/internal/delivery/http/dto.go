@@ -3,7 +3,7 @@ package http
 import (
 	"github.com/google/uuid"
 
-	"libriary_system/shared/domain"
+	"libriary_system/library_service/internal/domain"
 	"libriary_system/shared/pagination"
 )
 

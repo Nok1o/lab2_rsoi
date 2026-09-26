@@ -1,6 +1,6 @@
 package http
 
-import "libriary_system/shared/domain"
+import "libriary_system/rating_service/internal/domain"
 
 type ratingResponse struct {
 	Stars int `json:"stars"`

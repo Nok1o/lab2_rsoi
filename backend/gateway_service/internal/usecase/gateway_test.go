@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"libriary_system/shared/domain"
+	"libriary_system/gateway_service/internal/domain"
 	"libriary_system/shared/pagination"
 )
 
@@ -176,6 +176,21 @@ func newTestGateway() (*GatewayUseCase, *fakeLibrary, *fakeRating, *fakeReservat
 	rating := &fakeRating{items: make(map[string]domain.Rating)}
 	reservation := &fakeReservation{items: make(map[uuid.UUID]domain.Reservation)}
 	return NewGatewayUseCase(library, rating, reservation), library, rating, reservation
+}
+
+func TestGetRatingDoesNotCreateMissingRating(t *testing.T) {
+	gateway, _, rating, _ := newTestGateway()
+
+	got, err := gateway.GetRating(context.Background(), "alice")
+	if err != nil {
+		t.Fatalf("GetRating() error = %v", err)
+	}
+	if got.Username != "alice" || got.StarsCount != initialStars {
+		t.Fatalf("GetRating() = %+v", got)
+	}
+	if len(rating.items) != 0 {
+		t.Fatalf("GET created rating: %+v", rating.items)
+	}
 }
 
 func TestGatewayRentAndReturn(t *testing.T) {
