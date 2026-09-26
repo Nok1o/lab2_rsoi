@@ -12,7 +12,6 @@ import (
 	"libriary_system/gateway_service/internal/domain"
 	"libriary_system/shared/log"
 	"libriary_system/shared/pagination"
-	"libriary_system/shared/validation"
 )
 
 const initialStars = 75
@@ -67,7 +66,7 @@ func (useCase *GatewayUseCase) ListLibraries(
 	pageToken pagination.PageToken,
 ) (pagination.Page[domain.Library], error) {
 	city = strings.TrimSpace(city)
-	fields := validation.ValidatePageToken(pageToken)
+	fields := pagination.ValidatePageToken(pageToken)
 	if city == "" {
 		fields["city"] = "must not be empty"
 	}
@@ -83,7 +82,7 @@ func (useCase *GatewayUseCase) ListBooks(
 	showAll bool,
 	pageToken pagination.PageToken,
 ) (pagination.Page[domain.LibraryBook], error) {
-	fields := validation.ValidatePageToken(pageToken)
+	fields := pagination.ValidatePageToken(pageToken)
 	if libraryUID == uuid.Nil {
 		fields["libraryUid"] = "must be a valid UUID"
 	}

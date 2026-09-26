@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"libriary_system/rating_service/internal/domain"
-	"libriary_system/shared/validation"
+	usernamevalidation "libriary_system/shared/username"
 )
 
 const (
@@ -29,7 +29,7 @@ func NewRatingUseCase(ratingRepo RatingRepository) *RatingUseCase {
 }
 
 func (r *RatingUseCase) GetByUsername(ctx context.Context, username string) (domain.Rating, error) {
-	if err := validation.ValidateUsername(username); err != nil {
+	if err := usernamevalidation.Validate(username); err != nil {
 		return domain.Rating{}, fmt.Errorf("invalid username: %w", err)
 	}
 
@@ -53,7 +53,7 @@ func (r *RatingUseCase) UpdateRating(ctx context.Context, rating domain.Rating) 
 }
 
 func (r *RatingUseCase) AddStars(ctx context.Context, username string, stars int) (domain.Rating, error) {
-	if err := validation.ValidateUsername(username); err != nil {
+	if err := usernamevalidation.Validate(username); err != nil {
 		return domain.Rating{}, fmt.Errorf("invalid username: %w", err)
 	}
 

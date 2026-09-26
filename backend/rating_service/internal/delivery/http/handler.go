@@ -10,7 +10,7 @@ import (
 	"libriary_system/rating_service/internal/domain"
 	"libriary_system/rating_service/internal/usecase"
 	"libriary_system/shared/log"
-	"libriary_system/shared/validation"
+	"libriary_system/shared/username"
 )
 
 const maxRequestBodySize = 1 << 20
@@ -85,7 +85,7 @@ func (handler *Handler) AddStars(w stdhttp.ResponseWriter, request *stdhttp.Requ
 
 func (handler *Handler) writeError(w stdhttp.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, validation.InvalidUsernameErr), errors.Is(err, usecase.InvalidStarsCountErr):
+	case errors.Is(err, username.ErrInvalid), errors.Is(err, usecase.InvalidStarsCountErr):
 		writeJSON(w, stdhttp.StatusBadRequest, errorResponse{Message: err.Error()})
 	case errors.Is(err, domain.ErrRatingNotFound):
 		writeJSON(w, stdhttp.StatusNotFound, errorResponse{Message: err.Error()})

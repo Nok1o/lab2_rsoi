@@ -3,7 +3,7 @@ package usecase
 import (
 	"fmt"
 
-	"libriary_system/shared/validation"
+	usernamevalidation "libriary_system/shared/username"
 )
 
 type ValidationError struct {
@@ -22,7 +22,7 @@ func validationError(fields map[string]string) error {
 }
 
 func validateUsername(username string) error {
-	if err := validation.ValidateUsername(username); err != nil {
+	if err := usernamevalidation.Validate(username); err != nil {
 		return validationError(map[string]string{"username": fmt.Sprintf("%v", err)})
 	}
 	return nil

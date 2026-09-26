@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"libriary_system/reservation_service/internal/domain"
-	"libriary_system/shared/validation"
+	usernamevalidation "libriary_system/shared/username"
 )
 
 var (
@@ -40,7 +40,7 @@ func (useCase *ReservationUseCase) Rent(
 	libraryUID, bookUID uuid.UUID,
 	tillDate time.Time,
 ) (domain.Reservation, error) {
-	if err := validation.ValidateUsername(username); err != nil {
+	if err := usernamevalidation.Validate(username); err != nil {
 		return domain.Reservation{}, fmt.Errorf("%w: %w", ErrInvalidReservation, err)
 	}
 	if libraryUID == uuid.Nil || bookUID == uuid.Nil || tillDate.IsZero() {
@@ -64,7 +64,7 @@ func (useCase *ReservationUseCase) Rent(
 }
 
 func (useCase *ReservationUseCase) ListByUsername(ctx context.Context, username string) ([]domain.Reservation, error) {
-	if err := validation.ValidateUsername(username); err != nil {
+	if err := usernamevalidation.Validate(username); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidReservation, err)
 	}
 	return useCase.repository.ListByUsername(ctx, username)
@@ -75,7 +75,7 @@ func (useCase *ReservationUseCase) CountByUsernameAndStatus(
 	username string,
 	status domain.ReservationStatus,
 ) (int, error) {
-	if err := validation.ValidateUsername(username); err != nil {
+	if err := usernamevalidation.Validate(username); err != nil {
 		return 0, fmt.Errorf("%w: %w", ErrInvalidReservation, err)
 	}
 	if !validStatus(status) {
@@ -92,7 +92,7 @@ func (useCase *ReservationUseCase) GetByUIDAndUsername(
 	if reservationUID == uuid.Nil {
 		return domain.Reservation{}, ErrInvalidReservation
 	}
-	if err := validation.ValidateUsername(username); err != nil {
+	if err := usernamevalidation.Validate(username); err != nil {
 		return domain.Reservation{}, fmt.Errorf("%w: %w", ErrInvalidReservation, err)
 	}
 	return useCase.repository.GetByUIDAndUsername(ctx, reservationUID, username)
@@ -107,7 +107,7 @@ func (useCase *ReservationUseCase) Return(
 	if reservationUID == uuid.Nil {
 		return domain.Reservation{}, ErrInvalidReservation
 	}
-	if err := validation.ValidateUsername(username); err != nil {
+	if err := usernamevalidation.Validate(username); err != nil {
 		return domain.Reservation{}, fmt.Errorf("%w: %w", ErrInvalidReservation, err)
 	}
 	if returnDate.IsZero() {

@@ -3,7 +3,6 @@ package usecase
 import (
 	"libriary_system/library_service/internal/domain"
 	"libriary_system/shared/pagination"
-	"libriary_system/shared/validation"
 
 	"github.com/google/uuid"
 )
@@ -19,7 +18,7 @@ func (err *ValidationError) Error() string {
 }
 
 func validateListLibraries(city string, pageToken pagination.PageToken) error {
-	fields := validation.ValidatePageToken(pageToken)
+	fields := pagination.ValidatePageToken(pageToken)
 	if city == "" {
 		fields["city"] = "must not be empty"
 	}
@@ -28,7 +27,7 @@ func validateListLibraries(city string, pageToken pagination.PageToken) error {
 }
 
 func validateListBooks(libraryUID uuid.UUID, pageToken pagination.PageToken) error {
-	fields := validation.ValidatePageToken(pageToken)
+	fields := pagination.ValidatePageToken(pageToken)
 	if libraryUID == uuid.Nil {
 		fields["libraryUid"] = "must not be empty"
 	}

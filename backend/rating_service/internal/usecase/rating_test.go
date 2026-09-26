@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"libriary_system/rating_service/internal/domain"
-	"libriary_system/shared/validation"
+	"libriary_system/shared/username"
 )
 
 func TestAddStarsDelegatesAtomicChange(t *testing.T) {
@@ -47,7 +47,7 @@ func TestAddStarsDelegatesAtomicChange(t *testing.T) {
 
 func TestGetByUsernameRejectsInvalidUsername(t *testing.T) {
 	_, err := NewRatingUseCase(&ratingRepositoryStub{}).GetByUsername(context.Background(), " ")
-	if !errors.Is(err, validation.InvalidUsernameErr) {
+	if !errors.Is(err, username.ErrInvalid) {
 		t.Fatalf("GetByUsername() error = %v", err)
 	}
 }

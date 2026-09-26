@@ -2,7 +2,7 @@ package usecase
 
 import (
 	"libriary_system/rating_service/internal/domain"
-	"libriary_system/shared/validation"
+	usernamevalidation "libriary_system/shared/username"
 )
 
 func validateRating(rating domain.Rating) error {
@@ -10,5 +10,5 @@ func validateRating(rating domain.Rating) error {
 		return InvalidStarsCountErr
 	}
 
-	return validation.ValidateUsername(rating.Username)
+	return usernamevalidation.Validate(rating.Username)
 }

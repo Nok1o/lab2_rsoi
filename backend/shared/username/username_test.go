@@ -1,4 +1,4 @@
-package validation
+package username
 
 import (
 	"errors"
@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestValidateUsername(t *testing.T) {
+func TestValidate(t *testing.T) {
 	tests := []struct {
 		name     string
 		username string
@@ -27,12 +27,12 @@ func TestValidateUsername(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := ValidateUsername(test.username)
+			err := Validate(test.username)
 			if test.valid && err != nil {
-				t.Fatalf("ValidateUsername(%q) = %v, want nil", test.username, err)
+				t.Fatalf("Validate(%q) = %v, want nil", test.username, err)
 			}
-			if !test.valid && !errors.Is(err, InvalidUsernameErr) {
-				t.Fatalf("ValidateUsername(%q) = %v, want InvalidUsernameErr", test.username, err)
+			if !test.valid && !errors.Is(err, ErrInvalid) {
+				t.Fatalf("Validate(%q) = %v, want ErrInvalid", test.username, err)
 			}
 		})
 	}
